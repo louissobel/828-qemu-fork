@@ -733,8 +733,8 @@ int cpu_x86_handle_mmu_fault(CPUX86State *env, target_ulong addr,
             error_code = 0;
             goto do_fault;
         }
-        /* if PSE bit is set, then we use a 4MB page */
-        if ((pde & PG_PSE_MASK) && (env->cr[4] & CR4_PSE_MASK)) {
+        /* if PSE bit is set and supported, then we use a 4MB page */
+        if ((pde & PG_PSE_MASK) && (env->cr[4] & CR4_PSE_MASK)  && (env->features[FEAT_1_EDX] & CPUID_PSE)) {
             page_size = 4096 * 1024;
             switch (mmu_idx) {
             case MMU_USER_IDX:
