@@ -398,32 +398,42 @@ static int tpm_passthrough_handle_device_opts(QemuOpts *opts, TPMBackend *tb)
 {
     TPMPassthruState *tpm_pt = TPM_PASSTHROUGH(tb);
     const char *value;
+    int cli_fd;
 
     value = qemu_opt_get(opts, "cancel-path");
     if (value) {
         tb->cancel_path = g_strdup(value);
     }
 
-    value = qemu_opt_get(opts, "path");
-    if (!value) {
-        value = TPM_PASSTHROUGH_DEFAULT_DEVICE;
-    }
+    cli_fd = qemu_opt_get_number(opts, "fd", -1);
+    if (cli_fd != -1) {
+      tpm_pt->tpm_fd = cli_fd;
+      tpm_pt->tpm_dev = g_strdup("(fd)");
+    } else {
+      value = qemu_opt_get(opts, "path");
+      if (!value) {
+          value = TPM_PASSTHROUGH_DEFAULT_DEVICE;
+      }
 
-    tpm_pt->tpm_dev = g_strdup(value);
+      tpm_pt->tpm_dev = g_strdup(value);
 
-    tb->path = g_strdup(tpm_pt->tpm_dev);
+      tb->path = g_strdup(tpm_pt->tpm_dev);
 
-    tpm_pt->tpm_fd = qemu_open(tpm_pt->tpm_dev, O_RDWR);
-    if (tpm_pt->tpm_fd < 0) {
-        error_report("Cannot access TPM device using '%s': %s\n",
-                     tpm_pt->tpm_dev, strerror(errno));
-        goto err_free_parameters;
+      tpm_pt->tpm_fd = qemu_open(tpm_pt->tpm_dev, O_RDWR);
+      if (tpm_pt->tpm_fd < 0) {
+          error_report("Cannot access TPM device using '%s': %s\n",
+                       tpm_pt->tpm_dev, strerror(errno));
+          goto err_free_parameters;
+      }
     }
 
     if (tpm_passthrough_test_tpmdev(tpm_pt->tpm_fd)) {
-        error_report("'%s' is not a TPM device.\n",
-                     tpm_pt->tpm_dev);
+        error_report("'%s' (fd %d) is not a TPM device.",
+                     tpm_pt->tpm_dev, tpm_pt->tpm_fd);
         goto err_close_tpmdev;
+    } else {
+        error_report("'%s' (fd %d) is a valid TPM device!! Yay!",
+                     tpm_pt->tpm_dev, tpm_pt->tpm_fd);
     }
 
     return 0;
@@ -459,9 +469,6 @@ static TPMBackend *tpm_passthrough_create(QemuOpts *opts, const char *id)
     }
 
     tpm_pt->cancel_fd = tpm_passthrough_open_sysfs_cancel(tb);
-    if (tpm_pt->cancel_fd < 0) {
-        goto err_exit;
-    }
 
     return tb;
 
@@ -499,6 +506,11 @@ static const QemuOptDesc tpm_passthrough_cmdline_opts[] = {
         .name = "path",
         .type = QEMU_OPT_STRING,
         .help = "Path to TPM device on the host",
+    },
+    {
+        .name = "fd",
+        .type = QEMU_OPT_NUMBER,
+        .help = "FD for TPM device",
     },
     { /* end of list */ },
 };
