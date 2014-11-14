@@ -105,7 +105,7 @@
                                           TPM_TIS_INTERRUPTS_SUPPORTED)
 
 #define TPM_TIS_TPM_DID       0x0001
-#define TPM_TIS_TPM_VID       PCI_VENDOR_ID_IBM
+#define TPM_TIS_TPM_VID       (unsigned)((0x6 << 0xC) | (0x8 << 0x8) | (0x2 << 0x4) | 0x8)
 #define TPM_TIS_TPM_RID       0x0001
 
 #define TPM_TIS_NO_DATA_BYTE  0xff
