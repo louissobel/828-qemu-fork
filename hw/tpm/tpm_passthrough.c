@@ -71,6 +71,8 @@ struct TPMPassthruState {
     bool tpm_op_canceled;
     int cancel_fd;
     bool had_startup_error;
+
+    bool softinit;
 };
 
 typedef struct TPMPassthruState TPMPassthruState;
@@ -162,6 +164,19 @@ err_exit:
 static int tpm_passthrough_unix_transfer(TPMPassthruState *tpm_pt,
                                          const TPMLocality *locty_data)
 {
+    // Short circuit here if TPM_Init so init code can call tx_bufs
+    struct tpm_req_hdr *req = (struct tpm_req_hdr *)locty_data->w_buffer.buffer;
+    if (req->ordinal == cpu_to_be32(TPM_ORD_Init) && tpm_pt->softinit) {
+      DPRINTF("Incoming INIT command for softinit... clobbering it\n");
+
+      // Respond with simulated BAD_ORDINAL
+      struct tpm_resp_hdr *resp = (struct tpm_resp_hdr *)locty_data->r_buffer.buffer;
+      resp->tag = cpu_to_be16(TPM_TAG_RSP_COMMAND);
+      resp->len = cpu_to_be32(sizeof(struct tpm_resp_hdr));
+      resp->errcode = cpu_to_be32(TPM_BAD_ORDINAL);
+      return resp->len;
+    }
+
     return tpm_passthrough_unix_tx_bufs(tpm_pt,
                                         locty_data->w_buffer.buffer,
                                         locty_data->w_offset,
@@ -187,6 +202,29 @@ static void tpm_passthrough_worker_thread(gpointer data,
                                       thr_parms->tpm_state->locty_number);
         break;
     case TPM_BACKEND_CMD_INIT:
+        if (tpm_pt->softinit) {
+          DPRINTF("tpm_passthrough: softinit is True, sending TPM_Init");
+
+          struct tpm_req_hdr req;
+          struct tpm_resp_hdr res;
+
+          req.tag = cpu_to_be16(TPM_TAG_RQU_COMMAND);
+          req.len = cpu_to_be32(sizeof(req));
+          req.ordinal = cpu_to_be32(TPM_ORD_Init);
+
+          int ret = tpm_passthrough_unix_tx_bufs(tpm_pt,
+                                                 (uint8_t*)&req,
+                                                 sizeof(req),
+                                                 (uint8_t*)&res,
+                                                 sizeof(res));
+          if (ret < 0 || res.errcode != be32_to_cpu(TPM_SUCCESS)) {
+            error_report("Unable to send softinit TPM_Init. Nuking fd.");
+            tpm_pt->tpm_fd = -1;
+            tpm_pt->had_startup_error = true;
+          } else {
+            DPRINTF("tpm_passthrough: softinit OK\n");
+          }
+        }
     case TPM_BACKEND_CMD_END:
     case TPM_BACKEND_CMD_TPM_RESET:
         /* nothing to do */
@@ -436,6 +474,12 @@ static int tpm_passthrough_handle_device_opts(QemuOpts *opts, TPMBackend *tb)
                      tpm_pt->tpm_dev, tpm_pt->tpm_fd);
     }
 
+    bool softinit = qemu_opt_get_bool(opts, "softinit", false);
+    tpm_pt->softinit = softinit;
+    if (softinit) {
+        error_report("softinit true for TPM");
+    }
+
     return 0;
 
  err_close_tpmdev:
@@ -511,6 +555,11 @@ static const QemuOptDesc tpm_passthrough_cmdline_opts[] = {
         .name = "fd",
         .type = QEMU_OPT_NUMBER,
         .help = "FD for TPM device",
+    },
+    {
+        .name = "softinit",
+        .type = QEMU_OPT_BOOL,
+        .help = "Whether we should do a software TPM_Init. Default no.",
     },
     { /* end of list */ },
 };

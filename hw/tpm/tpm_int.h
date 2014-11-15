@@ -60,8 +60,11 @@ struct tpm_resp_hdr {
 #define TPM_TAG_RSP_AUTH1_COMMAND 0xc5
 #define TPM_TAG_RSP_AUTH2_COMMAND 0xc6
 
+#define TPM_SUCCESS               0
 #define TPM_FAIL                  9
+#define TPM_BAD_ORDINAL           10
 
 #define TPM_ORD_GetTicks          0xf1
+#define TPM_ORD_Init              0x97
 
 #endif /* TPM_TPM_INT_H */
