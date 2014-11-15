@@ -30,7 +30,7 @@
 #include "qemu-common.h"
 #include "qemu/main-loop.h"
 
-/*#define DEBUG_TIS */
+/* #define DEBUG_TIS */
 
 #ifdef DEBUG_TIS
 #define DPRINTF(fmt, ...) \
@@ -532,6 +532,7 @@ static void tpm_tis_mmio_write_intern(void *opaque, hwaddr addr,
     }
 
     if (tpm_backend_had_startup_error(s->be_driver)) {
+        DPRINTF("tpm_tis: abandoning write due to backend startup error\n");
         return;
     }
 
@@ -739,12 +740,14 @@ static void tpm_tis_mmio_write_intern(void *opaque, hwaddr addr,
     case TPM_TIS_REG_DATA_FIFO:
         /* data fifo */
         if (tis->active_locty != locty) {
+            DPRINTF("tpm_tis: Rejecting write, locality mismatch (%d != %d)\n", tis->active_locty, locty);
             break;
         }
 
         if (tis->loc[locty].state == TPM_TIS_STATE_IDLE ||
             tis->loc[locty].state == TPM_TIS_STATE_EXECUTION ||
             tis->loc[locty].state == TPM_TIS_STATE_COMPLETION) {
+            DPRINTF("tpm_tis: Rejecting write, in wrong state (%d)\n", tis->loc[locty].state);
             /* drop the byte */
         } else {
             DPRINTF("tpm_tis: Byte to send to TPM: %02x\n", (uint8_t)val);
